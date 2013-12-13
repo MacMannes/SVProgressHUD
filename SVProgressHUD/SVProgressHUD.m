@@ -11,6 +11,9 @@
 #error SVProgressHUD is ARC only. Either turn on ARC for the project or use -fobjc-arc flag
 #endif
 
+#define SV_SYSTEM_VERSION_GREATER_THAN_OR_EQUAL_TO(v)  ([[[UIDevice currentDevice] systemVersion] compare:v options:NSNumericSearch] != NSOrderedAscending)
+
+
 #import "SVProgressHUD.h"
 #import <QuartzCore/QuartzCore.h>
 
@@ -21,15 +24,6 @@ NSString * const SVProgressHUDWillAppearNotification = @"SVProgressHUDWillAppear
 NSString * const SVProgressHUDDidAppearNotification = @"SVProgressHUDDidAppearNotification";
 
 NSString * const SVProgressHUDStatusUserInfoKey = @"SVProgressHUDStatusUserInfoKey";
-
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 70000
-static const CGFloat SVProgressHUDRingRadius = 14;
-static const CGFloat SVProgressHUDRingThickness = 1;
-static const CGFloat SVProgressHUDParallaxDepthPoints = 10;
-#else
-static const CGFloat SVProgressHUDRingRadius = 14;
-static const CGFloat SVProgressHUDRingThickness = 6;
-#endif
 
 @interface SVProgressHUD ()
 
@@ -50,6 +44,10 @@ static const CGFloat SVProgressHUDRingThickness = 6;
 
 @property (nonatomic, readonly) CGFloat visibleKeyboardHeight;
 @property (nonatomic, assign) UIOffset offsetFromCenter;
+
+@property (nonatomic, assign) CGFloat hudRingRadius;
+@property (nonatomic, assign) CGFloat hudRingThickness;
+@property (nonatomic, assign) CGFloat hudParallaxDepthPoints;
 
 - (void)showProgress:(float)progress
               status:(NSString*)string
@@ -190,6 +188,14 @@ static const CGFloat SVProgressHUDRingThickness = 6;
 		self.alpha = 0;
         self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         self.activityCount = 0;
+        
+        self.hudRingRadius = 14;
+        if ([self respondsToSelector:@selector(tintColor)]) {
+            self.hudRingThickness = 1;
+            self.hudParallaxDepthPoints = 10;
+        } else {
+            self.hudRingThickness = 6;
+        }
     }
 	
     return self;
@@ -245,15 +251,15 @@ static const CGFloat SVProgressHUDRingThickness = 6;
     
     if(string) {
         CGSize constraintSize = CGSizeMake(200, 300);
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 70000
-        CGRect stringRect = [string boundingRectWithSize:constraintSize options:(NSStringDrawingUsesFontLeading|NSStringDrawingTruncatesLastVisibleLine|NSStringDrawingUsesLineFragmentOrigin) attributes:@{NSFontAttributeName: self.stringLabel.font} context:NULL];
-        stringWidth = stringRect.size.width;
-        stringHeight = stringRect.size.height;
-#else
-        CGSize stringSize = [string sizeWithFont:self.stringLabel.font constrainedToSize:constraintSize];
-        stringWidth = stringSize.width;
-        stringHeight = stringSize.height;
-#endif
+        if (SV_SYSTEM_VERSION_GREATER_THAN_OR_EQUAL_TO(@"7.0")) {
+            CGRect stringRect = [string boundingRectWithSize:constraintSize options:(NSStringDrawingUsesFontLeading|NSStringDrawingTruncatesLastVisibleLine|NSStringDrawingUsesLineFragmentOrigin) attributes:@{NSFontAttributeName: self.stringLabel.font} context:NULL];
+            stringWidth = stringRect.size.width;
+            stringHeight = stringRect.size.height;
+        } else {
+            CGSize stringSize = [string sizeWithFont:self.stringLabel.font constrainedToSize:constraintSize];
+            stringWidth = stringSize.width;
+            stringHeight = stringSize.height;
+        }
 
         if (imageUsed)
             hudHeight = stringAndImageHeightBuffer + stringHeight;
@@ -598,13 +604,13 @@ static const CGFloat SVProgressHUDRingThickness = 6;
                                                                                  object:nil
                                                                                userInfo:userInfo];
                              
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 70000
-                             // Tell the rootViewController to update the StatusBar appearance
-                             UIViewController *rootController = [[UIApplication sharedApplication] keyWindow].rootViewController;
-                             if ([rootController respondsToSelector:@selector(setNeedsStatusBarAppearanceUpdate)]) {
-                               [rootController setNeedsStatusBarAppearanceUpdate];
+                             if (SV_SYSTEM_VERSION_GREATER_THAN_OR_EQUAL_TO(@"7.0")) {
+                                 // Tell the rootViewController to update the StatusBar appearance
+                                 UIViewController *rootController = [[UIApplication sharedApplication] keyWindow].rootViewController;
+                                 if ([rootController respondsToSelector:@selector(setNeedsStatusBarAppearanceUpdate)]) {
+                                     [rootController setNeedsStatusBarAppearanceUpdate];
+                                 }
                              }
-#endif
                              // uncomment to make sure UIWindow is gone from app.windows
                              //NSLog(@"%@", [UIApplication sharedApplication].windows);
                              //NSLog(@"keyWindow = %@", [UIApplication sharedApplication].keyWindow);
@@ -619,7 +625,7 @@ static const CGFloat SVProgressHUDRingThickness = 6;
 - (CAShapeLayer *)ringLayer {
     if(!_ringLayer) {
         CGPoint center = CGPointMake(CGRectGetWidth(hudView.frame)/2, CGRectGetHeight(hudView.frame)/2);
-        _ringLayer = [self createRingLayerWithCenter:center radius:SVProgressHUDRingRadius lineWidth:SVProgressHUDRingThickness color:self.hudRingForegroundColor];
+        _ringLayer = [self createRingLayerWithCenter:center radius:self.hudRingRadius lineWidth:self.hudRingThickness color:self.hudRingForegroundColor];
         [self.hudView.layer addSublayer:_ringLayer];
     }
     return _ringLayer;
@@ -628,7 +634,7 @@ static const CGFloat SVProgressHUDRingThickness = 6;
 - (CAShapeLayer *)backgroundRingLayer {
     if(!_backgroundRingLayer) {
         CGPoint center = CGPointMake(CGRectGetWidth(hudView.frame)/2, CGRectGetHeight(hudView.frame)/2);
-        _backgroundRingLayer = [self createRingLayerWithCenter:center radius:SVProgressHUDRingRadius lineWidth:SVProgressHUDRingThickness color:self.hudRingBackgroundColor];
+        _backgroundRingLayer = [self createRingLayerWithCenter:center radius:self.hudRingRadius lineWidth:self.hudRingThickness color:self.hudRingBackgroundColor];
         _backgroundRingLayer.strokeEnd = 1;
         [self.hudView.layer addSublayer:_backgroundRingLayer];
     }
@@ -727,18 +733,18 @@ static const CGFloat SVProgressHUDRingThickness = 6;
 
 - (UIView *)hudView {
     if(!hudView) {
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 70000
-        hudView = [[UIToolbar alloc] initWithFrame:CGRectZero];
-        ((UIToolbar *)hudView).translucent = YES;
-        ((UIToolbar *)hudView).barTintColor = self.hudBackgroundColor;
-#else
-        hudView = [[UIView alloc] initWithFrame:CGRectZero];
+        if (SV_SYSTEM_VERSION_GREATER_THAN_OR_EQUAL_TO(@"7.0")) {
+            hudView = [[UIToolbar alloc] initWithFrame:CGRectZero];
+            ((UIToolbar *)hudView).translucent = YES;
+            ((UIToolbar *)hudView).barTintColor = self.hudBackgroundColor;
+        } else {
+            hudView = [[UIView alloc] initWithFrame:CGRectZero];
+        }
         
 #if __IPHONE_OS_VERSION_MIN_REQUIRED >= 50000
         
         // UIAppearance is used when iOS >= 5.0
 		hudView.backgroundColor = self.hudBackgroundColor;
-#endif
 #endif
 
         hudView.layer.cornerRadius = 10;
@@ -750,20 +756,18 @@ static const CGFloat SVProgressHUDRingThickness = 6;
         //
         // add motion effect
         //
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 70000
-        {
+        if (SV_SYSTEM_VERSION_GREATER_THAN_OR_EQUAL_TO(@"7.0")) {
             UIInterpolatingMotionEffect *effectX = [[UIInterpolatingMotionEffect alloc] initWithKeyPath: @"center.x" type: UIInterpolatingMotionEffectTypeTiltAlongHorizontalAxis];
-            effectX.minimumRelativeValue = @(-SVProgressHUDParallaxDepthPoints);
-            effectX.maximumRelativeValue = @(SVProgressHUDParallaxDepthPoints);
+            effectX.minimumRelativeValue = @(-self.hudParallaxDepthPoints);
+            effectX.maximumRelativeValue = @(self.hudParallaxDepthPoints);
             
             UIInterpolatingMotionEffect *effectY = [[UIInterpolatingMotionEffect alloc] initWithKeyPath: @"center.y" type: UIInterpolatingMotionEffectTypeTiltAlongVerticalAxis];
-            effectY.minimumRelativeValue = @(-SVProgressHUDParallaxDepthPoints);
-            effectY.maximumRelativeValue = @(SVProgressHUDParallaxDepthPoints);
+            effectY.minimumRelativeValue = @(-self.hudParallaxDepthPoints);
+            effectY.maximumRelativeValue = @(self.hudParallaxDepthPoints);
             
             [hudView addMotionEffect: effectX];
             [hudView addMotionEffect: effectY];
         }
-#endif
         
         [self addSubview:hudView];
     }
@@ -775,11 +779,12 @@ static const CGFloat SVProgressHUDRingThickness = 6;
         stringLabel = [[UILabel alloc] initWithFrame:CGRectZero];
 		stringLabel.backgroundColor = [UIColor clearColor];
 		stringLabel.adjustsFontSizeToFitWidth = YES;
-#if __IPHONE_OS_VERSION_MIN_REQUIRED < 60000
-        stringLabel.textAlignment = UITextAlignmentCenter;
-#else
-        stringLabel.textAlignment = NSTextAlignmentCenter;
-#endif
+        
+        if (SV_SYSTEM_VERSION_GREATER_THAN_OR_EQUAL_TO(@"6.0")) {
+            stringLabel.textAlignment = NSTextAlignmentCenter;
+        } else {
+            stringLabel.textAlignment = UITextAlignmentCenter;
+        }
         
 		stringLabel.baselineAdjustment = UIBaselineAdjustmentAlignCenters;
 
@@ -787,10 +792,10 @@ static const CGFloat SVProgressHUDRingThickness = 6;
 		stringLabel.textColor = self.hudForegroundColor;
 		stringLabel.font = self.hudFont;
         
-#if __IPHONE_OS_VERSION_MIN_REQUIRED < 70000
-		stringLabel.shadowColor = self.hudStatusShadowColor;
-		stringLabel.shadowOffset = CGSizeMake(0, -1);
-#endif
+        if ([self respondsToSelector:@selector(tintColor)]) {
+            stringLabel.shadowColor = self.hudStatusShadowColor;
+            stringLabel.shadowOffset = CGSizeMake(0, -1);
+        }
         stringLabel.numberOfLines = 0;
     }
     
@@ -858,11 +863,11 @@ static const CGFloat SVProgressHUDRingThickness = 6;
     }
 #endif
     
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 70000
-    return [UIColor whiteColor];
-#else
+    if ([self respondsToSelector:@selector(tintColor)]) {
+        return [UIColor whiteColor];
+    }
+
     return [UIColor colorWithWhite:0 alpha:0.8];
-#endif
 }
 
 - (UIColor *)hudForegroundColor {
@@ -876,11 +881,12 @@ static const CGFloat SVProgressHUDRingThickness = 6;
     }
 #endif
     
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 70000
-    return [UIColor colorWithWhite:0 alpha:0.8];
-#else
+    
+    if ([self respondsToSelector:@selector(tintColor)]) {
+        return [UIColor colorWithWhite:0 alpha:0.8];
+    }
+    
     return [UIColor whiteColor];
-#endif
 }
 
 - (UIColor *)hudRingBackgroundColor {
@@ -894,11 +900,11 @@ static const CGFloat SVProgressHUDRingThickness = 6;
     }
 #endif
     
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 70000
-    return [UIColor whiteColor];
-#else
+    if ([self respondsToSelector:@selector(tintColor)]) {
+        return [UIColor whiteColor];
+    }
+    
     return [UIColor colorWithWhite:0 alpha:0.8];
-#endif
 }
 
 - (UIColor *)hudRingForegroundColor {
@@ -912,11 +918,11 @@ static const CGFloat SVProgressHUDRingThickness = 6;
     }
 #endif
     
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 70000
-    return self.tintColor;
-#else
+    if ([self respondsToSelector:@selector(tintColor)]) {
+        return self.tintColor;
+    }
+    
     return [UIColor whiteColor];
-#endif
 }
 
 - (UIColor *)hudStatusShadowColor {
@@ -930,11 +936,11 @@ static const CGFloat SVProgressHUDRingThickness = 6;
     }
 #endif
  
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 70000
-    return [UIColor colorWithWhite:200.0f/255.0f alpha:0.8];
-#else
+    if ([self respondsToSelector:@selector(tintColor)]) {
+        return [UIColor colorWithWhite:200.0f/255.0f alpha:0.8];
+    }
+    
     return [UIColor blackColor];
-#endif
 }
 
 - (UIFont *)hudFont {
@@ -948,11 +954,11 @@ static const CGFloat SVProgressHUDRingThickness = 6;
     }
 #endif
     
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 70000
-    return [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
-#else
+    if ([self respondsToSelector:@selector(preferredFontForTextStyle:)]) {
+        return [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+    }
+
     return [UIFont boldSystemFontOfSize:16];
-#endif
 }
 
 - (UIImage *)hudSuccessImage {
@@ -966,11 +972,11 @@ static const CGFloat SVProgressHUDRingThickness = 6;
     }
 #endif
 
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 70000
-    return [UIImage imageNamed:@"SVProgressHUD.bundle/success-black"];
-#else
+    if ([self respondsToSelector:@selector(tintColor)]) {
+        return [UIImage imageNamed:@"SVProgressHUD.bundle/success-black"];
+    }
+
     return [UIImage imageNamed:@"SVProgressHUD.bundle/success.png"];
-#endif
 }
 
 - (UIImage *)hudErrorImage {
@@ -984,11 +990,11 @@ static const CGFloat SVProgressHUDRingThickness = 6;
     }
 #endif
     
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 70000
-    return [UIImage imageNamed:@"SVProgressHUD.bundle/error-black"];
-#else
+    if ([self respondsToSelector:@selector(tintColor)]) {
+        return [UIImage imageNamed:@"SVProgressHUD.bundle/error-black"];
+    }
+
     return [UIImage imageNamed:@"SVProgressHUD.bundle/error.png"];
-#endif
 }
 
 @end
